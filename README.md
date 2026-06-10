@@ -1,6 +1,8 @@
 ## 安装 orbbec+rtabmap
 sudo apt install ros-humble-orbbec-camera ros-humble-orbbec-camera-msgs
+
 sudo apt install ros-humble-rtabmap-ros ros-humble-rtabmap-launch ros-humble-rtabmap-rviz-plugins ros-humble-rtabmap-viz
+
 sudo apt install ros-humble-depth-image-proc ros-humble-image-transport-plugins ros-humble-stereo-image-proc
 
 ## 运行
