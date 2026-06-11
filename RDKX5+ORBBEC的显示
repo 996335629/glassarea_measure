@@ -1,0 +1,85 @@
+##0. SSH 进 X5（你已经在这一步）
+bashssh
+
+root@192.168.0.111#密码：root
+##1.装包（只跑一次，已装可跳过）
+bashsudo
+
+apt install -y \
+ ros-humble-orbbec-camera \
+ ros-humble-orbbec-camera-msgs \
+ ros-humble-hobot-codec \
+ ros-humble-websocket
+✅验证：dpkg -l | grep -E "orbbec-camera|hobot-codec|ros-humble-websocket"看到4 行---
+##2.一次性环境配置（避免每次 source）
+bashecho
+
+"source /opt/tros/humble/setup.bash" >> ~/.bashrcsource ~/.bashrc
+✅验证：which ros2 输出 /opt/ros/humble/bin/ros2
+##3.启动 Orbbec摄像头节点（后台）
+bashnohup
+
+ros2 launch orbbec_camera gemini_330_series.launch.py > /tmp/orbbec.log2>&1 &
+echo "Orbbec PID: $!"
+等待 ~5 秒后验证：
+bashros2
+
+node list | grep camera #看到 /camera/cameraros2 topic list | grep color #看到 /camera/color/image_rawros2 topic hz /camera/color/image_raw & #看到 ~30Hz 后 Ctrl+C
+✅ 通过条件：节点有 /camera/camera，彩色图 ~30fps---
+##4.启动 hobot_codec编码（后台，订阅彩色图 → 输出 JPEG topic）
+bashnohup
+
+ros2 launch hobot_codec hobot_codec_encode.launch.py \
+ codec_sub_topic:=/camera/color/image_raw \
+ codec_in_mode:=ros \
+ codec_in_format:=rgb8 \
+ codec_out_mode:=ros \
+ codec_out_format:=jpeg \
+ codec_pub_topic:=/image_jpeg \
+ > /tmp/codec.log2>&1 &
+echo "codec PID: $!"
+等待 ~3 秒后验证：
+bashros2
+
+node list | grep codec #看到 /hobot_codec_encoderros2 topic hz /image_jpeg & #看到 ~30Hz 后 Ctrl+C
+✅ 通过条件：/image_jpeg30fps---
+##5.启动 websocket推流（后台）
+bashnohup
+
+ros2 launch websocket websocket.launch.py \
+ websocket_image_topic:=/image_jpeg \
+ websocket_image_type:=mjpeg \
+ websocket_only_show_image:=true \
+ > /tmp/websocket.log2>&1 &
+echo "websocket PID: $!"
+等待 ~3 秒后验证：
+bashros2
+
+node list | grep websocket #看到 /websocketss -tlnp | grep :8000 #看到 nginx 在听curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/ # 输出200
+✅ 通过条件：节点、端口、首页都正常---
+##6. PC浏览器看画面在 你的笔记本电脑浏览器（与 X5同一 WiFi/网段）打开：
+code
+
+http://192.168.0.111:8000
+应该能看到 TROS页面，图像区域就是 Orbbec实时画面。
+##7.不想看了，怎么停
+bashpkill
+
+-f "orbbec_camera"
+pkill -f "hobot_codec_encode"
+pkill -f "websocket"
+# TROS 的 nginx不用杀，下次启动自动复用
+##8. 下次想用，一条命令恢复（可选）
+把3、4、5步做成脚本 /root/start_orbbec_web.sh：
+bashcat
+
+> /root/start_orbbec_web.sh <<'EOF'
+#!/bin/bashsource /opt/tros/humble/setup.bashnohup ros2 launch orbbec_camera gemini_330_series.launch.py > /tmp/orbbec.log2>&1 &
+sleep5nohup ros2 launch hobot_codec hobot_codec_encode.launch.py \
+ codec_sub_topic:=/camera/color/image_raw codec_in_format:=rgb8 \
+ codec_pub_topic:=/image_jpeg > /tmp/codec.log2>&1 &
+sleep3nohup ros2 launch websocket websocket.launch.py \
+ websocket_image_topic:=/image_jpeg websocket_image_type:=mjpeg \
+ websocket_only_show_image:=true > /tmp/websocket.log2>&1 &
+sleep3echo "==>浏览器打开 http://192.168.0.111:8000"
+EOFchmod +x /root/start_orbbec_web.sh
